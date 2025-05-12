@@ -1,0 +1,61 @@
+import os
+import pandas as pd
+from sentence_transformers import SentenceTransformer, util
+import nltk
+from nltk.tokenize import sent_tokenize
+
+nltk.download('punkt')
+sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+def load_essays(path):
+    essays = []
+    for fname in os.listdir(path):
+        if fname.endswith(".txt"):
+            with open(os.path.join(path, fname), 'r', encoding='utf-8') as f:
+                essays.append(f.read())
+    return essays
+
+essays = load_essays("sample_essays")
+
+def detect_logical_gaps(essay):
+    sentences = sent_tokenize(essay)
+    embeddings = sbert_model.encode(sentences, convert_to_tensor=True)
+    coherence_scores = []
+    for i in range(len(sentences) - 1):
+        sim = util.cos_sim(embeddings[i], embeddings[i+1]).item()
+        coherence_scores.append(sim)
+    weak_links = [i for i, score in enumerate(coherence_scores) if score < 0.5]
+    return sentences, weak_links
+
+def generate_rule_based_feedback(sentences, weak_indices):
+    feedback = []
+    for idx in weak_indices:
+        if idx + 1 < len(sentences):
+            context = f"Sentence 1: {sentences[idx]}\nSentence 2: {sentences[idx+1]}"
+            suggestion = (
+                "These sentences may lack a clear logical connection. "
+                "Consider adding a transitional phrase or elaborating the reasoning."
+            )
+            feedback.append((context, suggestion))
+    return feedback
+
+def personalize_feedback(feedback_list, student_level="intermediate"):
+    personalized = []
+    for context, feedback in feedback_list:
+        if student_level == "beginner":
+            feedback = "Tip: " + feedback
+        elif student_level == "advanced":
+            feedback = "Detailed Suggestion: " + feedback
+        personalized.append((context, feedback))
+    return personalized
+
+essay = essays[0]
+sentences, weak_links = detect_logical_gaps(essay)
+feedback = generate_rule_based_feedback(sentences, weak_links)
+personalized = personalize_feedback(feedback, student_level="intermediate")
+
+for context, fb in personalized:
+    print("\n--- Context ---")
+    print(context)
+    print("\nFeedback:")
+    print(fb)
